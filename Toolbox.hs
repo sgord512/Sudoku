@@ -57,29 +57,6 @@ data Shape = Row | Col | Box deriving (Show, Bounded, Enum, Ord, Eq)
 type Squares = [Square]
 type SquaresMap = Map Loc Square
 type Regions = [Region]
-
-filterMap :: (a -> Maybe b) -> [a] -> [b]
-filterMap f [] = []
-filterMap f (x:xs) = case f x of
-  Nothing -> filterMap f xs
-  Just v -> v : (filterMap f xs)
-
-filterMapM :: (Monad m) => (a -> m (Maybe b)) -> [a] -> m [b]
-filterMapM f [] = return []
-filterMapM f (x:xs) = do 
-  result <- f x
-  case result of 
-    Nothing -> filterMapM f xs
-    Just v -> do rest <- filterMapM f xs
-                 return (v:rest)
-  
-applyAll :: [(a -> b)] -> a -> [b]
-applyAll fs a = zipWith ($) fs (repeat a)
-
-chunk :: Int -> [a] -> [[a]]
-chunk _ [] = []
-chunk n xs = let (chk, rest) = splitAt n xs
-             in (chk : chunk n rest)
   
 row (Square _ (Loc (r, _))) = Region Row r
 col (Square _ (Loc (_, c))) = Region Col c

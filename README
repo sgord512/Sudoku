@@ -1,2 +1,38 @@
-I'm trying to implement a sudoku solver/generator in haskell. 
-That is all
+What I have:
+
+A sudoku generator / solver.
+
+It can take an empty board and randomly fill in squares until
+eventually it has filled in enough to get a solvable sudoku
+puzzle. Note that there is nothing fundamentally different between teh
+random choices that this program makes and the trial-and-error often
+necessary in teh toughest sudokus, which suggests that fundamentally
+that might be the only way to go about solving sudokus.
+
+Anyway, right now it is really slow, like ~30 seconds for a full
+generation sometimes. I want that to be reduced A LOT!
+
+But first, I think it would probably be a good idea to clean up the
+code significantly, since it is getting pretty unwieldy. 
+
+Also, I don't think I am particularly consistent when it comes to
+style, so I can fix that, and also add haddock documentation. 
+
+I want to add a way to serialize sudoku boards, for testing purposes,
+and so I can send them to javascript for animation. I also want to
+instrument the program with some more data, like number of moves,
+number of forks, etc...
+
+I can then use that data to generate boards, by rewinding different
+amounts. 
+
+I am not sure if all of the different patterns of reasoning that can
+be used in solving sudoku puzzles are captured by my program
+(excluding intuition of course, insofar as it is unprincipled). I
+don't know whether there are deductions which could speed up the
+solution process, but are not necessary to get a unique solution
+without branching. 
+
+OMG, crazy idea!!! I could use my tree layout algorithms to display
+the decision tree used to solve a sudoku board!! THat would be pretty
+hard, and time consuming. 
