@@ -36,3 +36,7 @@ without branching.
 OMG, crazy idea!!! I could use my tree layout algorithms to display
 the decision tree used to solve a sudoku board!! THat would be pretty
 hard, and time consuming. 
+
+I have everything actually working, and I am able to start instrumenting stuff, YAY!!!!
+
+Now I can start pulling all solutions from a shared queue which should make things much much much much faster
