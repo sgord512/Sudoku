@@ -10,30 +10,30 @@ import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
 import System.Random
-import Su.Types
+import Su.Display
+import Su.Solver
 import Util.List
 import Util.Monad
 
-type GameState = State Solver
-
-rGen f = do state <- get
-            let (a, gen') = f $ genS state
-            put $ state { genS = gen' }
-            return a
+rGen f = do
+ state <- get
+ let (a, gen') = f $ genS state
+ put $ state { genS = gen' }
+ return a
 
 randomElement :: [a] -> GameState a
 randomElement xs = do 
   ix <- rGen $ randomR (0, length xs - 1)
   return (xs !! ix)
 
-possibilities :: Square -> GameState [Integer]
+possibilities :: Loc -> GameState [Integer]
 possibilities s = do 
-  sqs <- liftM concat $ mapM squaresInRegion (regions s)
-  let prelimPoss = nums \\ (nub $ map val (filter filled sqs))
+  locs <- liftM concat $ mapM squaresInRegion (locRegions s)
+  let prelimPoss = nums \\ (nub $ map filledVal (filter filled locs))
   des <- deadEnds s
   return $ prelimPoss \\ des
 
-deadEnds :: Square -> GameState [Integer]
+deadEnds :: Loc -> GameState [Integer]
 deadEnds s = do
   allDeadEnds <- gets ((Map.lookup (loc s)) . deadEndsS)
   let dEnds = case allDeadEnds of 
@@ -118,6 +118,14 @@ allSolutions = do
   let solnPairs = map (\soln@(Solution sq _) -> (sq, soln)) (sqSolutions ++ reSolutions)
   return $ (snd . unzip) $ Map.toList $ Map.fromListWith (\soln soln' -> Solution (solutionSquare soln) (reasons soln ++ reasons soln')) solnPairs
         
+areSolutions :: GameState Bool
+areSolutions = gets (not . null . solutionsS)
+    
+updateSolutions :: GameState ()
+updateSolutions = do
+  solns <- allSolutions
+  modify (\s -> s { solutionsS = solns })
+    
 fillSolvedSquare :: Solution -> GameState Move
 fillSolvedSquare soln@(Solution s _) = do updateSquare s 
                                           return $ SolutionApplication soln
@@ -145,12 +153,10 @@ solveIO solver = do
     else do putStrLn "Done!" >> return solver''
           
 oneStepIO solver = do              
-  let (solns, solver') = runState allSolutions solver
+  let (solutionsWaiting, solver') = runState areSolutions solver
+      (solns, solver'') = runState getSolutions (if solutionsWaiting then solver' else (execState updateSolutions solver'))
   mapM_ print solns
-  let (move, solver'') = case solns of
-        [] -> runState fillRandomSquare solver'
-        soln:solns -> runState (fillSolvedSquare soln) solver'
-  return $ execState (recordMove move) solver''
+  return $ execState (if null solns then randomAndRecordMove else solveAndRecordMove) solver''
               
 solve :: GameState Solver
 solve = do 
@@ -165,8 +171,18 @@ solve = do
                        solve
     else get 
 
+randomAndRecordMove :: GameState Move
+randomAndRecordMove = fillRandomSquare >>= recordMove
+
+solveAndRecordMove :: GameState Move
+solveAndRecordMove = do (soln:solns) <- gets solutionsS  
+                        modify (\s -> s { solutionsS = solns })
+                        fillSolvedSquare soln >>= recordMove
+
 oneStep = do
-  solns <- allSolutions
+  solutionsWaiting <- areSolutions
+  unless solutionsWaiting updateSolutions
+  solns <- getSolutions
   move <- case solns of
     [] -> fillRandomSquare              
     x:xs -> fillSolvedSquare x               

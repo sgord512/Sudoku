@@ -9,191 +9,123 @@ import Util.List ( chunk )
 import Util.String
 import System.Random
 
-data Solver = Solver { boardS :: Board, 
-                       genS :: StdGen, 
-                       problemsS :: Problems, 
-                       movesS :: Moves,
-                       deadEndsS :: DeadEndsMap
-                       
-                     }
+--| List of possible numbers that can go in each box. 
+nums = [1..9]
 
-data DeadEnd = DeadEnd Square Integer Problems 
-
-instance Show DeadEnd where
-  show (DeadEnd s i ps) = "Square at " ++ (show $ loc s) ++ " cannot be filled with " ++ (show i) ++ " because " ++ (concat $ intersperse ", and " (map show ps))
- 
+--| Type Synonyms 
 type DeadEndsMap = Map Loc [DeadEnd]
+type LocValMap = Map Loc Val
+type LVPair = (Loc, Val)
 
-data Move = SolutionApplication Solution | RandomMove Square [Integer]
-
-instance Show Move where
-  show (SolutionApplication soln) = "Applied solution: " ++ show soln
-  show (RandomMove sq poss) = "Randomly filled in square " ++ (show sq)
-              
-squareInMove :: Move -> Square                                           
-squareInMove (SolutionApplication (Solution sq _)) = sq
-squareInMove (RandomMove sq _) = sq                                                    
-                                           
-instance Display Solver where
-  display Solver{ movesS = moves, boardS = board } = displayColor (if null moves then Nothing else Just $ squareInMove $ head moves) board
-  
-displayColor lastMove b = let board = map (\row -> " " ++ (concat $ displayRow $ map (displayWithHighlighting lastMove) row) ++ " ") (to2dArray $ allSquares b)
-                              sqs = splitRows board
-                          in "\n" ++ (concat $ intersperse "\n" sqs) ++ "\n"
-                          
 type Moves = [Move]
 type Problems = [Problem]              
+type Reasons = [Reason]
+type Regions = [Region]
+type Solutions = [Solution]
 
-data Solution = Solution Square [Reason]
-reasons (Solution _ rs) = rs
-solutionSquare (Solution sq _) = sq
+--| Board 
+data Board = Board LocValMap Regions deriving Show
 
-instance Eq Solution where 
-         (Solution (Square l v) _) == (Solution (Square l' v') _) = (l == l') && (v == v')
+boardLocValMap :: Board -> LocValMap
+boardLocValMap (Board lvMap _) = lvMap 
 
-instance Show Solution where
-  show (Solution sq rsons) = "Square at " ++ show (loc sq) ++ " can be filled in with " ++ show (val sq) ++ " because " ++ (concat $ intersperse ", and " (map show rsons))
+boardRegions :: Board -> Regions
+boardRegions (Board _ r) = r
 
-data Reason = OnlyAllowableValue | OnlyLocationForNumberInRegion Region deriving Eq
+val :: Board -> Loc -> Val
+val b l = Map.findWithDefault (error ("Tried to get value of invalid location: " ++ show l))  boardLocValMap l
 
-instance Show Reason where
-  show OnlyAllowableValue = "all other values appeared already in its row, box, and column"
-  show (OnlyLocationForNumberInRegion region) = "this number cannot be placed in any other square in " ++ show region
+filled :: Board -> Loc -> Bool
+filled b l = case val b l of
+  Empty -> False
+  Num _ -> True
 
-initialState seed = Solver { boardS = newBoard, 
-                             genS = mkStdGen seed, 
-                             problemsS = [], 
-                             movesS = [], 
-                             deadEndsS = Map.empty }
+unfilled = not . filled
 
-class Display a where
-  display :: a -> String
+boardRows b = filter ((== Row) . regionShape) (allRegions b)
+boardCols b = filter ((== Col) . regionShape) (allRegions b)
+boardBoxes b = filter ((== Box) . regionShape) (allRegions b)
 
-instance Display a => Display [a] where 
-  display [] = ""
-  display (x:xs) = display x ++ (display xs)
+shapes = [Row, Col, Box]
+funcs = [locRow, locCol, locBox]
+shapeFuncs = zip shapes funcs
 
-data Square = Square Loc (Maybe Integer)
+blankBoard :: Board
+blankBoard = let locs = [Loc (row, col) | row <- nums, col <- nums ]
+               regions = nums <**> map (\s n -> Region (fst s) n) [Row, Col, Box]
+           in Board (Map.fromList $ zip locs (repeat Empty)) regions
 
-instance Eq Square where
-  (Square l v) == (Square l' v') = (l == l') && (v == v')
+--| DeadEnd
+data DeadEnd = DeadEnd Loc Val Problems 
 
-instance Ord Square where
-  (Square l v) `compare` (Square l' v') = case l `compare` l' of
-    EQ -> v `compare` v
-    neq -> neq
-
-displayWithHighlighting :: Maybe Square -> Square -> String
-displayWithHighlighting Nothing sq = display sq
-displayWithHighlighting (Just sqMove) sq | sqMove == sq = color Green (display sq)
-                                         | otherwise = display sq
-
-instance Display Square where 
-  display (Square _ (Just v)) = (show v)
-  display (Square _ Nothing) = [boxChar]
-  
-instance Show Square where
-  show (Square l (Just v)) = "Square at " ++ (show l) ++ " filled in with " ++ (show v)
-  show (Square l Nothing) = "Square at " ++ (show l) ++ " currently empty"
-
-data Problem = SquareUnfillable Square | NumberUnmatchable Region Integer | SquareWithConflictingSolutions Square [Integer]
-
-instance Display Problem where 
-  display p = "Problem: " ++ show p
-
-instance Show Problem where
-  show (SquareUnfillable s) = "Square at " ++ (show $ loc s) ++ " cannot be filled!"
-  show (NumberUnmatchable r i) = "There is no place to put a " ++ (show i) ++ " in " ++ (display r) ++ "!"
-  show (SquareWithConflictingSolutions s ls) = "Square at " ++ (show $ loc s) ++ " must be all of the following: " ++ (show ls)
-  
+--| Loc
 data Loc = Loc (Integer, Integer) deriving Eq
-r (Loc (a, _)) = a
-c (Loc (_, b)) = b
 
-instance Show Loc where
-  show (Loc (r, c)) = "(" ++ (show r) ++ "," ++ (show c) ++ ")"
+locRow (Loc (r, _)) = Region Row r
+locCol (Loc (_, c)) = Region Col c
+locBox (Loc (r, c)) = Region Box (((r - 1) `quot` 3) * 3 + ((c - 1) `quot` 3) + 1) 
+
+locRegions :: Loc -> Regions
+locRegions = (<**> [row, col, box]) . pure
 
 instance Ord Loc where 
   (Loc (row, col)) `compare` (Loc (row', col')) = 
     case row `compare` row' of
       EQ -> col `compare` col'
       neq -> neq
-      
-instance Display Loc where
-  display (Loc l) = show l
 
+--| Move
+data Move = SolutionApplication Solution | RandomMove Loc [Val]
+
+moveLoc :: Move -> Loc                                           
+moveLoc (SolutionApplication (Solution l _)) = l
+moveLoc (RandomMove l _) = l
+
+--| Problem
+data Problem = LocUnfillable Loc | NumberUnmatchable Region Integer | LocWithConflictingSolutions Loc [Integer]
+
+--| Reason
+data Reason = OnlyAllowableValue | OnlyLocForNumberInRegion Region deriving Eq
+
+--| Region
 data Region = Region Shape Integer deriving Eq
 
-instance Show Region where
-  show = display
+regionShape (Region s _) = s
+regionNum (Region _ n) = n
 
-instance Display Region where
-  display (Region s n) = show s ++ " " ++ show n
-
-data Board = Board SquaresMap Regions deriving Show
-
-newBoard :: Board
-newBoard = let squares = [Square (Loc (row, col)) Nothing | row <- nums, col <- nums ]
-               regions = nums <**> (map (\s n -> Region s n) (map fst shapeFuncs))
-           in Board (Map.fromList $ zip (map loc squares) squares) regions
-              
-
-
-instance Display Board where 
-  display b = let board = map (\row -> " " ++ (concat $ displayRow $ map display row) ++ " ") (to2dArray $ allSquares b)
-                  sqs = splitRows board
-              in (concat $ intersperse "\n" sqs) ++ "\n"
-
-displayRow :: [String] -> [String]                 
-displayRow row = intersperse " " (intercalate ["|"] (chunk 3 row))
-
-splitRows :: [String] -> [String]
-splitRows arr = intercalate [replicate 24 '-'] (chunk 3 arr)                 
-
-to2dArray :: [Square] -> [[Square]]
-to2dArray ls = groupBy (\s s' -> (r $ loc s) == (r $ loc s')) ls
-
+--| Shape
 data Shape = Row | Col | Box deriving (Show, Bounded, Enum, Ord, Eq)
 
-type Squares = [Square]
-type SquaresMap = Map Loc Square
-type Regions = [Region]
-  
-row (Square (Loc (r, _)) _) = Region Row r
-col (Square (Loc (_, c)) _) = Region Col c
-box (Square (Loc (r, c)) _) = Region Box (((r - 1) `quot` 3) * 3 + ((c - 1) `quot` 3) + 1) 
+--| Solution
+data Solution = Solution Loc Value Reasons
 
-loc :: Square -> Loc
-loc (Square l _) = l
+solutionReasons (Solution _ _ rs) = rs
+solutionLoc (Solution l _ _) = l
+solutionVal (Solution _ v _) = v
 
-filled :: Square -> Bool
-filled (Square _  Nothing)  = False
-filled (Square _ (Just _))  = True
+instance Eq Solution where 
+         (Solution l v _) == (Solution l' v' _) = (l == l') && (v == v')
 
-unfilled = not . filled
+--| Solver
+data Solver = Solver { boardS :: Board, 
+                       genS :: StdGen, 
+                       problemsS :: Problems, 
+                       movesS :: Moves,
+                       deadEndsS :: DeadEndsMap,
+                       solutionsS :: Solutions
+                     }
+              
+initializeSolverFromSeed seed = Solver { boardS = blankBoard, 
+                                         genS = mkStdGen seed, 
+                                         problemsS = [], n
+                                         movesS = [], 
+                                         deadEndsS = Map.empty,
+                                         solutionsS = [] }
+--| Val
+data Val = Empty | Num Integer
 
-val :: Square ->  Integer
-val (Square loc v) = fromJust v
+displayWithHighlighting :: Maybe Square -> Square -> String
+displayWithHighlighting Nothing sq = display sq
+displayWithHighlighting (Just sqMove) sq | sqMove == sq = color Green (display sq)
+                                         | otherwise = display sq
 
-shapes = [Row, Col, Box]
-funcs = [row, col, box]
-shapeFuncs = zip shapes funcs
-getShapeFunc s = fromJust $ lookup s shapeFuncs
-
-shape (Region s _) = s
-num (Region _ n) = n
-
-allSquares (Board s _) = Map.elems s
-
-squaresMap (Board s _) = s
-allRegions (Board _ r) = r
-
-rows b = filter ((== Row) . shape) (allRegions b)
-cols b = filter ((== Col) . shape) (allRegions b)
-boxes b = filter ((== Box) . shape) (allRegions b)
-
-regions :: Square -> Regions
-regions = (<**> [row, col, box]) . pure
-  
-boxChar = '\x2B1C';
-nums = [1..9]
