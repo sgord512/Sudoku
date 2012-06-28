@@ -6,6 +6,7 @@ import Control.Monad.State
 import Data.List ( find )
 import Data.Maybe ( fromJust, isJust, maybe )
 import Su.Base
+import Su.Display
 import Su.Types
 import System.Console.GetOpt
 import System.Environment
@@ -42,10 +43,10 @@ config = do
 
 main = do 
   (verbose, seed) <- config
-  let game = initialState seed
+  let solver = initializeSolverFromSeed seed
   putStrLn $ "Seed is: " ++ show seed
   args <- getArgs 
   solved <- if verbose 
-     then solveIO game
-     else return $ execState solve game
-  putStrLn (display solved)
+     then solveIO solver
+     else return $ execState solve solver
+  putStrLn $ display solved

@@ -11,7 +11,8 @@ import System.Console.GetOpt
 import System.Environment
 import System.Random
 import Su.Display
-import Su.Solver
+import Su.Solver 
+import Su.Types hiding ( filled, unfilled )
 import Util.List
 import Util.Monad
 
@@ -26,98 +27,99 @@ randomElement xs = do
   ix <- rGen $ randomR (0, length xs - 1)
   return (xs !! ix)
 
-possibilities :: Loc -> GameState [Integer]
-possibilities s = do 
-  locs <- liftM concat $ mapM squaresInRegion (locRegions s)
-  let prelimPoss = nums \\ (nub $ map filledVal (filter filled locs))
-  des <- deadEnds s
-  return $ prelimPoss \\ des
+possibilities :: Loc -> GameState [Value]
+possibilities l = do 
+  let locs = concat $ map regionLocs (locRegions l)
+  filledLocs <- filterM filled locs
+  filledValues <- mapM filledValue filledLocs
+  let prelimPoss = nums \\ nub filledValues
+  devs <- deadEndValues l
+  return $ prelimPoss \\ devs
 
-deadEnds :: Loc -> GameState [Integer]
-deadEnds s = do
-  allDeadEnds <- gets ((Map.lookup (loc s)) . deadEndsS)
-  let dEnds = case allDeadEnds of 
-        Nothing -> []
-        Just des -> map (\(DeadEnd s i _) -> i) des
-  return dEnds
-
-isSolvable :: Square -> GameState Bool
-isSolvable s = do 
-  poss <- possibilities s
-  return (length poss == 1)
+deadEndValues :: Loc -> GameState [Value]
+deadEndValues l = do
+  dem <- getDeadEndsMap
+  return $ map deadEndValue (deadEndLookupDeadEnds dem l)
   
-isUnsolvable :: Square -> GameState Bool  
-isUnsolvable s = do
-  poss <- possibilities s
+isSolvable :: Loc -> GameState Bool
+isSolvable l = do 
+  poss <- possibilities l
+  return $ length poss == 1
+  
+isUnsolvable :: Loc -> GameState Bool  
+isUnsolvable l = do
+  poss <- possibilities l
   return $ null poss
   
-allSquareSolutions :: GameState [Solution]
-allSquareSolutions = do squares <- gets (allSquares . boardS) 
-                        let possSquares = filter unfilled squares
-                        filterMapM hasSolution possSquares
-                        
-hasSolution :: Square -> GameState (Maybe Solution)  
-hasSolution sq = do 
-  poss <- possibilities sq
-  case poss of
-    (n:[]) -> return $ Just $ Solution (Square (loc sq) (Just n)) [OnlyAllowableValue]
-    _ -> return Nothing
-
-squaresInRegion :: Region -> GameState [Square]
-squaresInRegion r@(Region s i) = do 
-  squares <- gets (allSquares . boardS)
-  return $ filter ((== r) . (getShapeFunc s)) squares
+allLocSolutions :: GameState Solutions
+allLocSolutions = do 
+  locs <- getLocs
+  unfilledLocs <- filterM unfilled locs
+  filterMapM locSolution unfilledLocs
+  where locSolution :: Loc -> GameState (Maybe Solution)  
+        locSolution l = do 
+          poss <- possibilities l
+          case poss of
+            (n:[]) -> return $ Just $ Solution l n [OnlyAllowableValue]
+            _ -> return Nothing
   
-numbersToMatch :: Region -> GameState [Integer]
-numbersToMatch r = do
-  sqs <- squaresInRegion r
-  return $ nums \\ (map val (filter filled sqs))
+regionUnmatchedValues :: Region -> GameState [Value]
+regionUnmatchedValues r = do
+  filledLocs <- filterM filled (regionLocs r) 
+  filledValues <- mapM filledValue filledLocs
+  return $ nums \\ filledValues
   
-isPossibleValueFor :: Integer -> Square -> GameState Bool
-i `isPossibleValueFor` s = do
-  poss <- possibilities s
-  return $ i `elem` poss
+candidateValueFor :: Value -> Loc -> GameState Bool
+n `candidateValueFor` l = do
+  poss <- possibilities l
+  return $ n `elem` poss
   
-squaresForNumbers :: Region -> GameState [(Integer, [Square])]
-squaresForNumbers r = do
-  sqs <- squaresInRegion r
-  let emptySquares = filter unfilled sqs  
-      numsToMatch = nums \\ (map val (filter filled sqs))
-  (liftM $ zip numsToMatch) (forM numsToMatch (\n -> filterM (n `isPossibleValueFor`) emptySquares))
-
+valuesAndLocs :: Region -> GameState [(Value, Locs)]
+valuesAndLocs r = do
+  emptyLocs <- filterM unfilled (regionLocs r)
+  values <- regionUnmatchedValues r
+  let possibleLocsForValue = (\n -> filterM (n `candidateValueFor`) emptyLocs)
+  (liftM $ zip values) (mapM possibleLocsForValue values)
+          
 regionSolutions :: Region -> GameState [Solution]
 regionSolutions r = do 
-  sqWithNums <- squaresForNumbers r
-  return $ filterMap (\(n, sqs) -> if length sqs == 1 
-                                   then Just $ Solution (Square (loc (head sqs)) (Just n)) [OnlyLocationForNumberInRegion r]
-                                   else Nothing) sqWithNums
+  valuesLocs <- valuesAndLocs r
+  return $ filterMap valueSolution valuesLocs
+  where valueSolution (v, (l:[])) = Just $ Solution l v [OnlyLocForValueInRegion r]
+        valueSolution (v, _) = Nothing 
 
-unmatchableNumbers :: Region -> GameState [Problem]
-unmatchableNumbers r = do
-  sqsWithNums <- squaresForNumbers r
-  return $ filterMap (\(n, sqs) -> if null sqs then Just $ NumberUnmatchable r n else Nothing) sqsWithNums
+regionValueProblems :: Region -> GameState [Problem]
+regionValueProblems r = do
+  vls <- valuesAndLocs r
+  return $ filterMap problemValue vls
+  where problemValue (v, []) = Just $ ValueUnmatchable r v
+        problemValue (_, _) = Nothing 
 
-fillRandomSquare :: GameState Move
-fillRandomSquare = do 
-  sq <- (liftM $ filter unfilled) (gets $ allSquares . boardS) >>= randomElement
-  poss <- possibilities sq
+fillRandomLoc :: GameState Move
+fillRandomLoc = do 
+  locs <- getLocs
+  unfilledLocs <- filterM unfilled locs
+  loc <- randomElement unfilledLocs
+  poss <- possibilities loc
   value <- randomElement poss
-  sq' <- updateSquare $ Square (loc sq) (Just value)
-  return $ RandomMove sq' poss
+  loc' <- updateLoc loc (Num value)
+  return $ RandomMove loc' poss
   
 allRegionSolutions :: GameState [Solution]  
 allRegionSolutions = do
-  rgns <- gets (allRegions . boardS)
+  rgns <- getRegions
   rgnSolutions <- mapM regionSolutions rgns
   return $ foldr1 (\a b -> union a b) rgnSolutions
   
 allSolutions :: GameState [Solution]
 allSolutions = do
-  sqSolutions <- allSquareSolutions
-  reSolutions <- allRegionSolutions
-  let solnPairs = map (\soln@(Solution sq _) -> (sq, soln)) (sqSolutions ++ reSolutions)
-  return $ (snd . unzip) $ Map.toList $ Map.fromListWith (\soln soln' -> Solution (solutionSquare soln) (reasons soln ++ reasons soln')) solnPairs
-        
+  locSolutions <- allLocSolutions
+  regSolutions <- allRegionSolutions
+  let solnPairs = map (\soln -> (solutionLoc soln, soln)) (locSolutions ++ regSolutions)
+      mergeSolutions = (\s s' -> Solution (solutionLoc s) (solutionVal s) (solutionReasons s ++ solutionReasons s'))
+      solnMap = Map.fromListWith mergeSolutions solnPairs
+  return $ snd $ unzip $ Map.toList solnMap
+
 areSolutions :: GameState Bool
 areSolutions = gets (not . null . solutionsS)
     
@@ -126,16 +128,19 @@ updateSolutions = do
   solns <- allSolutions
   modify (\s -> s { solutionsS = solns })
     
-fillSolvedSquare :: Solution -> GameState Move
-fillSolvedSquare soln@(Solution s _) = do updateSquare s 
-                                          return $ SolutionApplication soln
+fillSolvedLoc :: Solution -> GameState Move
+fillSolvedLoc soln@(Solution l v r) = do 
+  updateLoc l (Num v)
+  return $ SolutionApplication soln
                                                               
-updateSquare :: Square -> GameState Square
-updateSquare sq = modify (\solver@Solver { boardS = (Board map regions) } -> solver { boardS = Board (Map.insert (loc sq) sq map) regions }) >> return sq
+updateLoc :: Loc -> Val -> GameState Loc 
+updateLoc l v = modify (\solver@Solver{ boardS = (Board map regions) } -> solver { boardS = Board (Map.insert l v map) regions }) >> return l
   
+boardUnfilled :: GameState Bool
 boardUnfilled = do 
-  sqs <- gets (allSquares . boardS)
-  return $ not $ null (filter unfilled sqs)
+  locs <- getLocs
+  unfilledLocs <- filterM unfilled locs
+  return $ not $ null unfilledLocs
 
                  
 solveIO :: Solver -> IO Solver         
@@ -155,7 +160,7 @@ solveIO solver = do
 oneStepIO solver = do              
   let (solutionsWaiting, solver') = runState areSolutions solver
       (solns, solver'') = runState getSolutions (if solutionsWaiting then solver' else (execState updateSolutions solver'))
-  mapM_ print solns
+  mapM_ (putStrLn . display) solns
   return $ execState (if null solns then randomAndRecordMove else solveAndRecordMove) solver''
               
 solve :: GameState Solver
@@ -172,20 +177,20 @@ solve = do
     else get 
 
 randomAndRecordMove :: GameState Move
-randomAndRecordMove = fillRandomSquare >>= recordMove
+randomAndRecordMove = fillRandomLoc >>= recordMove
 
 solveAndRecordMove :: GameState Move
 solveAndRecordMove = do (soln:solns) <- gets solutionsS  
                         modify (\s -> s { solutionsS = solns })
-                        fillSolvedSquare soln >>= recordMove
+                        fillSolvedLoc soln >>= recordMove
 
 oneStep = do
   solutionsWaiting <- areSolutions
   unless solutionsWaiting updateSolutions
   solns <- getSolutions
   move <- case solns of
-    [] -> fillRandomSquare              
-    x:xs -> fillSolvedSquare x               
+    [] -> fillRandomLoc              
+    x:xs -> fillSolvedLoc x               
   recordMove move
           
 recordMove :: Move -> GameState Move
@@ -193,33 +198,49 @@ recordMove m = modify (\s@Solver{ movesS = moves } -> s { movesS = (m:moves) }) 
     
 markDeadEnd :: GameState ()
 markDeadEnd = do 
-  s <- get
-  let sq = (squareInMove $ head $ movesS s)
-      problems = problemsS s
-      de = DeadEnd sq (val sq) problems
-  modify (\solver@Solver { deadEndsS = deadEnds } -> solver { deadEndsS = Map.insertWith (++) (loc sq) [de] deadEnds })
+  solvr <- get
+  let loc = moveLoc $ head $ movesS solvr
+      problems = problemsS solvr
+  value <- filledValue loc
+  let de = DeadEnd value problems
+  modify (\solver@Solver { deadEndsS = deadEnds } -> solver { deadEndsS = Map.insertWith (++) loc [de] deadEnds })
   
 undoLastMove :: GameState ()
 undoLastMove = do
   (m:ms) <- gets movesS
-  let sq = squareInMove m
-  updateSquare (Square (loc sq) Nothing)
-  modify (\s -> s { movesS = ms })
-  
+  let l = moveLoc m
+  updateLoc l Empty
+  modify (\s -> s { movesS = ms, solutionsS = [] })
                
 stepBoard :: Solver -> Solver
 stepBoard solver = execState oneStep solver
 
+unfillableLocProblems :: GameState Problems
+unfillableLocProblems = do  
+  locs <- getLocs
+  unfilledLocs <- filterM unfilled locs
+  problemLocs <- filterM isUnsolvable unfilledLocs
+  return $ map LocUnfillable problemLocs
+
+multipleSolutionProblems :: GameState Problems
+multipleSolutionProblems = do
+  solns <- allSolutions
+  board <- getBoard
+  overwritingSolns <- filterM (\soln -> filled (solutionLoc soln)) solns
+  overwrittenValues <- mapM (\soln -> filledValue (solutionLoc soln)) overwritingSolns
+  return $ zipWith (\soln value -> LocWithConflictingSolutions (solutionLoc soln) [solutionVal soln, value]) overwritingSolns overwrittenValues
+
 problems :: GameState [Problem]
 problems = do
-  sqs <- (liftM (filter unfilled)) (gets (allSquares . boardS))
-  sqs' <- filterMapM (\s -> do unsolvable <- isUnsolvable s; if unsolvable then return $ Just (SquareUnfillable s) else return Nothing) sqs
-  multipleSolns <- filterMapM (\(Solution sq _) -> do squareMap <- gets (squaresMap . boardS)
-                                                      let actualSquare = fromJust $ Map.lookup (loc sq) squareMap
-                                                      if filled actualSquare 
-                                                        then return $ Just (SquareWithConflictingSolutions sq (nub [val sq, val actualSquare]))
-                                                        else return Nothing) =<< allSolutions
-  rgns <- gets (allRegions . boardS)
-  unmatchableNums <- (liftM concat) ((mapM unmatchableNumbers) rgns)
-  return $ sqs' ++ unmatchableNums ++ multipleSolns
+  problems' <- unfillableLocProblems
+  problems'' <- multipleSolutionProblems
+  problems''' <- unmatchableValueProblems
+  return $ problems' ++ problems'' ++ problems'''
+  
+  
+unmatchableValueProblems :: GameState Problems
+unmatchableValueProblems = do
+  regions <- getRegions
+  unmatchableValueProbs <- (liftM concat) ((mapM regionValueProblems) regions)
+  return unmatchableValueProbs
 
