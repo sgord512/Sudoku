@@ -40,3 +40,17 @@ hard, and time consuming.
 I have everything actually working, and I am able to start instrumenting stuff, YAY!!!!
 
 Now I can start pulling all solutions from a shared queue which should make things much much much much faster
+
+I have an idea which should make things much easier. Basically, I have
+each solution directly attributable to a move, so that I can rewind
+the dependency tree exactly as far as necessary to get to a clean
+state when needed. 
+
+That should be doable, if difficult to execute. 
+
+A random move should have no dependencies. So somehow I do need to
+keep track of solutions and not recreate them each turn.
+
+There shouldn't be any such thing as priority however. I don't think
+that this would make any sense.
+  

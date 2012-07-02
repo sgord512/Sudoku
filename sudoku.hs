@@ -11,6 +11,7 @@ import Su.Types
 import System.Console.GetOpt
 import System.Environment
 import System.Random
+import Util.Display
 
 data Flag = Verbose | Seed Int
 isSeed :: Flag -> Bool
@@ -47,6 +48,6 @@ main = do
   putStrLn $ "Seed is: " ++ show seed
   args <- getArgs 
   solved <- if verbose 
-     then solveIO solver
-     else return $ execState solve solver
+     then doSolveIO solver
+     else return $ doSolve solver
   putStrLn $ display solved

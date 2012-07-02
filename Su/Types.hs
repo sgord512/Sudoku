@@ -12,7 +12,7 @@ import System.Random
 -- | List of possible numbers that can go in each box. 
 nums = [1..9]
 
--- | Type Synonyms 
+-- * Type Synonyms 
 type DeadEndsMap = Map Loc [DeadEnd]
 type LocValMap = Map Loc Val
 type LVPair = (Loc, Val)
@@ -28,7 +28,7 @@ type Solutions = [Solution]
 -- | Value is used when I know that a particular number is used, as in the case of deadEnds
 type Value = Integer
 
--- | Board 
+-- * Data Definitions
 data Board = Board LocValMap Regions
 
 boardLocValMap :: Board -> LocValMap
@@ -52,16 +52,21 @@ blankBoard = let locs = [Loc (row, col) | row <- nums, col <- nums ]
                  regions = nums <**> map (\s n -> Region s n) [Row, Col, Box]
            in Board (Map.fromList $ zip locs (repeat Empty)) regions
 
--- | DeadEnd
-data DeadEnd = DeadEnd Value Problems 
-deadEndValue (DeadEnd v _) = v
-deadEndProblems (DeadEnd _ ps) = ps
+
+-- | This can only result from a 'RandomChoice'
+data DeadEnd = DeadEnd Value RandomChoice Problems 
+
+deadEndValue (DeadEnd v _ _) = v
+deadEndProblems (DeadEnd _ _ ps) = ps
+deadEndRandomChoice (DeadEnd _ rc _) = rc
 
 deadEndLookupDeadEnds :: DeadEndsMap -> Loc -> DeadEnds
 deadEndLookupDeadEnds dem l = maybe [] id (Map.lookup l dem)
 
+deadEndAfterRandomChoice :: DeadEnd -> RandomChoice -> Bool
+deadEndAfterRandomChoice (DeadEnd _ rc _) rc' = rc == rc'
 
--- | Loc
+-- | There is no particular reason I use a pair instead of a constructor with two parameters, and I should probably change that sometime soon. 
 data Loc = Loc (Integer, Integer) deriving Eq
 
 locRow (Loc (r, _)) = Region Row r
@@ -77,21 +82,43 @@ instance Ord Loc where
       EQ -> col `compare` col'
       neq -> neq
 
--- | Move
-data Move = SolutionApplication Solution | RandomMove Loc [Value]
+-- | Unaesthetically unsymmetric, and should have a unique ID so that a solution can depend on a move.
+data Move = SolutionApplication Solution | Branch RandomChoice deriving Eq
 
 moveLoc :: Move -> Loc                                           
 moveLoc (SolutionApplication (Solution l _ _)) = l
-moveLoc (RandomMove l _) = l
+moveLoc (Branch rc) = randomChoiceLoc rc
 
--- | Problem
-data Problem = LocUnfillable Loc | ValueUnmatchable Region Value | LocWithConflictingSolutions Loc [Integer]
+moveIsSolutionApplication :: Move -> Bool
+moveIsSolutionApplication (SolutionApplication _) = True
+moveIsSolutionApplication _ = False
 
--- | Reason
+moveIsBranch :: Move -> Bool
+moveIsBranch (Branch _) = True
+moveIsBranch _ = False
+
+-- | Problem with the current state of the board, forcing the solver to backtrack. Ideally I should be able to tie a problem to a move, so that I know exactly how far to backtrack. 
+data Problem = LocUnfillable Loc | ValueUnmatchable Region Value | LocWithConflictingSolutions Loc [Value] deriving (Eq, Ord)
+
+-- | A move that isn't determinstic, but is an arbitrary choice
+data RandomChoice = RandomChoice Loc Value [Value]
+
+randomChoiceLoc :: RandomChoice -> Loc
+randomChoiceLoc (RandomChoice l _ _) = l
+
+randomChoiceValue :: RandomChoice -> Value
+randomChoiceValue (RandomChoice _ v _) = v
+
+randomChoiceValues :: RandomChoice -> [Value]
+randomChoiceValues (RandomChoice _ _ vs) = vs
+
+instance Eq RandomChoice where 
+  (RandomChoice l v _) == (RandomChoice l' v' _) = l == l' && v == v'
+
+-- | Reason for a particular solution 
 data Reason = OnlyAllowableValue | OnlyLocForValueInRegion Region deriving Eq
 
--- | Region
-data Region = Region Shape Integer deriving Eq
+data Region = Region Shape Integer deriving (Eq, Ord)
 
 regionShape (Region s _) = s
 regionNum (Region _ n) = n
@@ -103,10 +130,10 @@ regionLocs (Region Box n) = [Loc (r + r', c + c') | r' <- [0,1,2], c' <- [0,1,2]
   where r = 3 * ((n - 1) `div` 3) + 1         
         c = 3 * ((n - 1) `mod` 3) + 1
 
--- | Shape
+-- | Shape of a region, used only to determine the locations in that region
 data Shape = Row | Col | Box deriving (Show, Bounded, Enum, Ord, Eq)
 
--- | Solution
+-- | Solution for a location
 data Solution = Solution Loc Value Reasons
 
 solutionReasons (Solution _ _ rs) = rs
@@ -116,20 +143,25 @@ solutionVal (Solution _ v _) = v
 instance Eq Solution where 
          (Solution l v _) == (Solution l' v' _) = (l == l') && (v == v')
 
--- | Solver
+-- | This is the piece of data used for the state
 data Solver = Solver { boardS :: Board, 
                        genS :: StdGen, 
                        problemsS :: Problems, 
                        movesS :: Moves,
                        deadEndsS :: DeadEndsMap,
-                       solutionsS :: Solutions
+                       solutionsS :: Solutions,
+                       locToFillS :: Maybe Loc
                      }
-              
+-- | Creates the solver used by the program
 initializeSolverFromSeed seed = Solver { boardS = blankBoard, 
                                          genS = mkStdGen seed, 
                                          problemsS = [],
                                          movesS = [], 
                                          deadEndsS = Map.empty,
-                                         solutionsS = [] }
--- | Val
+                                         solutionsS = [], 
+                                         locToFillS = Nothing }
+
+{-| Val. This is similar to a maybe, but conceptually differs in that Empty is a state of its own, as opposed to the absence of a value. 
+    I do have to cast from this whenever I am dealing with filled locs though. 
+-}
 data Val = Empty | Num Integer
