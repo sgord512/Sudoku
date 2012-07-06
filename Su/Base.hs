@@ -24,11 +24,6 @@ So the problem at the moment is that it won't backtrack sufficiently, by which I
 
 Run it like it is with: "./sudoku -vs 100" to see the error, which should be clear from that. 
 
-
-
---}
-
-
 step :: SolverStateT IO Solver
 step = do 
   continue <- boardUnfilled  
@@ -45,6 +40,7 @@ step = do
 
 go :: Solver -> IO Solver
 go solver = do execStateT step solver
+--}
 
 solveIO :: SolverStateT IO Solver        
 solveIO = do
@@ -56,8 +52,8 @@ solveIO = do
                then do fillOneIO
                        dispSolver     
                        solveIO
-               else do de@(loc, deadEnd) <- backtrack probs
-                       fillLocRandomly loc >>= recordMove
+               else do dispSolver
+                       de@(loc, deadEnd) <- backtrackIO probs
                        dispSolver
                        solveIO
                         
@@ -72,7 +68,14 @@ fillOneIO = do
    solns <- getSolutions
    lift $ mapM_ disp solns
    move <- if null solns
-           then branchAndRecordMove
+           then do 
+             locToFill <- getLocToFill
+             case locToFill of 
+               Nothing -> branchRandomlyAndRecordMove               
+               Just loc -> do 
+                 m <- branchAtLocAndRecordMove loc
+                 modify (\solver -> solver { locToFillS = Nothing })
+                 return m
            else solveAndRecordMove
    lift $ putStrLn $ (color Green "Move") ++ ": " ++ display move
    getSolver

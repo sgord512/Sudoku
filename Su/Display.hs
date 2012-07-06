@@ -14,12 +14,15 @@ instance Display Solution where
   display (Solution l v rsons) = value l ++ ":=" ++ show v ++ U.c2s U.because ++ (concat $ intersperse ", " (map display rsons))
 
 instance Display DeadEnd where
-  display (DeadEnd v rc ps) = (color Magenta "Dead End")  ++ ": " ++  show v ++ (U.notMemberOf:(U.c2s $ U.italic 'C')) ++ " " ++ (U.because:" ")  ++ (concat $ intersperse ", " (map display ps))
+  display (DeadEnd v rc ps) = (color Magenta "Dead End")  ++ ": " ++  show v ++ (U.notMemberOf:(U.c2s $ U.italic 'C')) ++ " " ++ (U.because:" ") ++ (concat $ intersperse ", " (map display ps)) ++ "\nDependent on: \n" ++ display rc
 
 instance Display Move where
   display (SolutionApplication soln) = "Applied solution: " ++ display soln
-  display (Branch (RandomChoice l v poss)) = value l ++ ":=" ++ show v ++ (U.memberOf:(curlyBraces $ concat $ intersperse "," (map show poss)))
+  display (Branch rc@(RandomChoice l v poss)) = display rc
               
+instance Display RandomChoice where    
+      display (RandomChoice l v poss) = value l ++ ":=" ++ show v ++ (U.memberOf:(curlyBraces $ concat $ intersperse "," (map show poss)))
+
 instance Display Solver where
   display Solver{..} = let displayLV = case movesS of 
                              [] -> displayLocVal
@@ -72,7 +75,7 @@ instance Display Problem where
     LocWithConflictingSolutions l solns -> "Square at " ++ display l ++ " must be all of the following: " ++ show solns
 
 instance Display Loc where
-  display (Loc (r, c)) = angleBrackets $ show r ++ "," ++ show c
+  display (Loc r c) = angleBrackets $ show r ++ "," ++ show c
   
 instance Display Region where
   display (Region s n) = show s ++ " " ++ show n
@@ -84,7 +87,7 @@ markEvery3rdRow :: [String] -> [String]
 markEvery3rdRow rows = concat $ intersperse [(replicate 24 '-')] (chunk 3 rows)            
 
 groupByRows :: [Loc] -> [[Loc]]
-groupByRows ls = groupBy (\(Loc (r, c)) (Loc (r', c')) -> r == r') ls
+groupByRows ls = groupBy (\(Loc r c) (Loc r' c') -> r == r') ls
 
 candidate :: Loc -> String
 candidate l = (U.italic 'C'):(parentheses $ display l)

@@ -38,7 +38,7 @@ boardRegions :: Board -> Regions
 boardRegions (Board _ r) = r
 
 boardLookupVal :: Board -> Loc -> Val
-boardLookupVal b l@(Loc (r, c)) = Map.findWithDefault (error ("Tried to get value of invalid location: " ++ "(" ++ show r ++ "," ++ show c ++ ")")) l (boardLocValMap b)
+boardLookupVal b l@(Loc r c) = Map.findWithDefault (error ("Tried to get value of invalid location: " ++ "(" ++ show r ++ "," ++ show c ++ ")")) l (boardLocValMap b)
 
 filled :: Board -> Loc -> Bool
 filled b l = case boardLookupVal b l of
@@ -48,7 +48,7 @@ filled b l = case boardLookupVal b l of
 unfilled b l = not $ filled b l
 
 blankBoard :: Board
-blankBoard = let locs = [Loc (row, col) | row <- nums, col <- nums ]
+blankBoard = let locs = [Loc row col | row <- nums, col <- nums ]
                  regions = nums <**> map (\s n -> Region s n) [Row, Col, Box]
            in Board (Map.fromList $ zip locs (repeat Empty)) regions
 
@@ -66,18 +66,18 @@ deadEndLookupDeadEnds dem l = maybe [] id (Map.lookup l dem)
 deadEndAfterRandomChoice :: DeadEnd -> RandomChoice -> Bool
 deadEndAfterRandomChoice (DeadEnd _ rc _) rc' = rc == rc'
 
--- | There is no particular reason I use a pair instead of a constructor with two parameters, and I should probably change that sometime soon. 
-data Loc = Loc (Integer, Integer) deriving Eq
+-- | A location on the sudoku board represented by a row and column
+data Loc = Loc Integer Integer deriving Eq
 
-locRow (Loc (r, _)) = Region Row r
-locCol (Loc (_, c)) = Region Col c
-locBox (Loc (r, c)) = Region Box (((r - 1) `quot` 3) * 3 + ((c - 1) `quot` 3) + 1) 
+locRow (Loc r _) = Region Row r
+locCol (Loc _ c) = Region Col c
+locBox (Loc r c) = Region Box (((r - 1) `quot` 3) * 3 + ((c - 1) `quot` 3) + 1) 
 
 locRegions :: Loc -> Regions
 locRegions = (<**> [locRow, locCol, locBox]) . pure
 
 instance Ord Loc where 
-  (Loc (row, col)) `compare` (Loc (row', col')) = 
+  (Loc row col) `compare` (Loc row col) = 
     case row `compare` row' of
       EQ -> col `compare` col'
       neq -> neq
@@ -124,9 +124,9 @@ regionShape (Region s _) = s
 regionNum (Region _ n) = n
 
 regionLocs :: Region -> Locs
-regionLocs (Region Row n) = map (\c -> Loc (n, c)) nums
-regionLocs (Region Col n) = map (\r -> Loc (r, n)) nums
-regionLocs (Region Box n) = [Loc (r + r', c + c') | r' <- [0,1,2], c' <- [0,1,2] ]
+regionLocs (Region Row n) = map (\c -> Loc n c) nums
+regionLocs (Region Col n) = map (\r -> Loc r n) nums
+regionLocs (Region Box n) = [Loc (r + r') (c + c') | r' <- [0,1,2], c' <- [0,1,2] ]
   where r = 3 * ((n - 1) `div` 3) + 1         
         c = 3 * ((n - 1) `mod` 3) + 1
 

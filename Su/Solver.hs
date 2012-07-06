@@ -174,6 +174,7 @@ updateProblems = do
   modify (\solver -> solver { problemsS = allProbs })
   return allProbs
   
+-- | Empty the list of known problems
 clearProblems :: Monad m => SolverStateT m ()  
 clearProblems = modify (\solver -> solver { problemsS = [] })
 
@@ -227,8 +228,12 @@ boardUnfilled = do
          
 
 -- | Fill a random location and record that move 
-branchAndRecordMove :: Monad m => SolverStateT m Move
-branchAndRecordMove = fillRandomLoc >>= recordMove
+branchRandomlyAndRecordMove :: Monad m => SolverStateT m Move
+branchRandomlyAndRecordMove = fillRandomLoc >>= recordMove
+
+-- | Fill a certain location with one of its possibilities and record that move
+branchAtLocAndRecordMove :: Monad m => Loc -> SolverStateT m Move
+branchAtLocAndRecordMove loc = fillLocRandomly loc >>= recordMove 
 
 -- | Apply a solution and record that move
 solveAndRecordMove :: Monad m => SolverStateT m Move
@@ -255,12 +260,41 @@ backtrack probs = do
       loc = moveLoc branch
   value <- filledValue loc
   updateLoc loc Empty
-  pruneOldDeadEnds randChoice
+  des <- pruneOldDeadEnds randChoice
+  
   let de = DeadEnd value randChoice probs
-  modify (\solver@Solver { deadEndsS = deadEnds } -> solver { deadEndsS = Map.insertWith (++) loc [de] deadEnds, movesS = validMoves, solutionsS = [] })
-  clearProblems
+  modify (\solver@Solver { deadEndsS = deadEnds } -> solver { deadEndsS = Map.insertWith (++) loc [de] deadEnds,
+                                                              movesS = validMoves, 
+                                                              solutionsS = [],
+                                                              problemsS = [],
+                                                              locToFillS = Just loc })
   return (loc, de)
   
+{-- The problem is that I need to clear the last move during the backtracking or else I will end up having each move dependent on itself, which makes no sense.  
+--}
+  
+backtrackIO :: Problems -> SolverStateT IO (Loc, DeadEnd)  
+backtrackIO probs = do
+  moves <- getMoves
+  let (branch, validMoves) = getLastBranchAndPriorMoves moves
+      (prevBranch@(Branch randChoice), _) = getLastBranchAndPriorMoves validMoves
+      loc = moveLoc prevBranch
+  value <- filledValue loc
+  updateLoc loc Empty
+  removedDeadEnds <- pruneOldDeadEnds randChoice
+  lift $ putStrLn "Removing the following dead ends!!!" >> putStrLn (unlines $ map display removedDeadEnds)
+  let de = DeadEnd value randChoice probs
+  modify (\solver@Solver { deadEndsS = deadEnds } -> solver { deadEndsS = Map.insertWith (++) loc [de] deadEnds,
+                                                              movesS = validMoves, 
+                                                              solutionsS = [],
+                                                              problemsS = [],
+                                                              locToFillS = Just loc })
+  return (loc, de)  
+  
+getLastBranchAndPriorMoves :: Moves -> (Move, Moves)
+getLastBranchAndPriorMoves moves = let (_, branch:validMoves) = break moveIsBranch moves
+                                   in (branch, validMoves)
+
 -- | Get rid of dead ends that no longer apply
 pruneOldDeadEnds :: Monad m => RandomChoice -> SolverStateT m DeadEnds
 pruneOldDeadEnds randChoice = do

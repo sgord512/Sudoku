@@ -25,26 +25,39 @@ type GameState = SolverStateT Identity
 
 getBoard :: Monad m => SolverStateT m Board
 getBoard = gets Su.boardS
+
 getProblems :: Monad m => SolverStateT m Problems
 getProblems = gets Su.problemsS
+
 getMoves :: Monad m => SolverStateT m Moves
 getMoves = gets Su.movesS
+
 getDeadEndsMap :: Monad m => SolverStateT m DeadEndsMap
 getDeadEndsMap = gets Su.deadEndsS
+
 getSolutions :: Monad m => SolverStateT m Solutions
 getSolutions = gets Su.solutionsS
+
+getLocToFill :: Monad m => SolverStateT m (Maybe Loc)
+getLocToFill = gets Su.locToFillS
+
 getLocs :: Monad m => SolverStateT m Locs
 getLocs = do
   b <- getBoard
   return $ Map.keys $ Su.boardLocValMap b
+
 getRegions :: Monad m => SolverStateT m Regions
 getRegions = do    
   b <- getBoard
   return $ Su.boardRegions b
+
 getRandomGen :: Monad m => SolverStateT m StdGen
 getRandomGen = gets Su.genS
+
 getSolver :: Monad m => SolverStateT m Solver
 getSolver = get             
+
+
 
 filled :: Monad m =>  Loc -> SolverStateT m Bool
 filled l = do
