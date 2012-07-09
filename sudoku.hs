@@ -5,12 +5,14 @@ import Control.Monad ( join )
 import Control.Monad.State
 import Data.List ( find )
 import Data.Maybe ( fromJust, isJust, maybe )
-import Su.Base
-import Su.Display
-import Su.Types
+import Su.Puzzle
+import Su.Tree
+import Su.Serialize
 import System.Console.GetOpt
 import System.Environment
 import System.Random
+import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec.Prim
 import Util.Display
 
 data Flag = Verbose | Seed Int
@@ -43,11 +45,14 @@ config = do
   
 
 main = do 
-  (verbose, seed) <- config
-  let solver = initializeSolverFromSeed seed
-  putStrLn $ "Seed is: " ++ show seed
-  args <- getArgs 
-  solved <- if verbose 
-     then doSolveIO solver
-     else return $ doSolve solver
-  putStrLn $ display solved
+  (file:otherArgs) <- getArgs 
+  parsedPuzzle <- parseFromFile puzzleParser file
+  case parsedPuzzle of
+    Left err -> print err
+    Right puzzle -> case classifyPuzzle puzzle of
+      (ProperPuzzle soln) -> do 
+        putStrLn "Starting puzzle: "
+        dispPath $ listToPath (puzzleGivens puzzle) Nil
+        putStrLn "Solved puzzle: "
+        dispPath soln
+      (ImproperPuzzle improperPuzzleType) -> disp improperPuzzleType

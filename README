@@ -1,56 +1,14 @@
 What I have:
 
-A sudoku generator / solver.
+A tree containing all possible valid ways of filling a sudoku board. 
 
-It can take an empty board and randomly fill in squares until
-eventually it has filled in enough to get a solvable sudoku
-puzzle. Note that there is nothing fundamentally different between teh
-random choices that this program makes and the trial-and-error often
-necessary in teh toughest sudokus, which suggests that fundamentally
-that might be the only way to go about solving sudokus.
+The ability to get particular solutions out of the tree. 
 
-Anyway, right now it is really slow, like ~30 seconds for a full
-generation sometimes. I want that to be reduced A LOT!
+A visual representation of a particular way of filling a sudoku board. 
 
-But first, I think it would probably be a good idea to clean up the
-code significantly, since it is getting pretty unwieldy. 
+What I want: 
 
-Also, I don't think I am particularly consistent when it comes to
-style, so I can fix that, and also add haddock documentation. 
+A way of representing a sudoku puzzle. 
 
-I want to add a way to serialize sudoku boards, for testing purposes,
-and so I can send them to javascript for animation. I also want to
-instrument the program with some more data, like number of moves,
-number of forks, etc...
 
-I can then use that data to generate boards, by rewinding different
-amounts. 
 
-I am not sure if all of the different patterns of reasoning that can
-be used in solving sudoku puzzles are captured by my program
-(excluding intuition of course, insofar as it is unprincipled). I
-don't know whether there are deductions which could speed up the
-solution process, but are not necessary to get a unique solution
-without branching. 
-
-OMG, crazy idea!!! I could use my tree layout algorithms to display
-the decision tree used to solve a sudoku board!! THat would be pretty
-hard, and time consuming. 
-
-I have everything actually working, and I am able to start instrumenting stuff, YAY!!!!
-
-Now I can start pulling all solutions from a shared queue which should make things much much much much faster
-
-I have an idea which should make things much easier. Basically, I have
-each solution directly attributable to a move, so that I can rewind
-the dependency tree exactly as far as necessary to get to a clean
-state when needed. 
-
-That should be doable, if difficult to execute. 
-
-A random move should have no dependencies. So somehow I do need to
-keep track of solutions and not recreate them each turn.
-
-There shouldn't be any such thing as priority however. I don't think
-that this would make any sense.
-  
