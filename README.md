@@ -15,6 +15,7 @@ _ 6 _ _ _ _ 2 8 _
 _ _ _ 4 1 9 _ _ 5
 _ _ _ _ 8 _ _ 7 9
 ```
+
 ## Condensed Sudoku (.csu):
 - A single sudoku puzzle per line, multiple puzzles per file.
 - No spaces, every character is either period or 1-9. Arranged in reading order (top to bottom, left to right).
