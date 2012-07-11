@@ -1,37 +1,41 @@
 module Su.Serialize where
 
+import Control.Applicative ( pure, (<*>) )
 import Data.Char ( digitToInt )
-import Data.Maybe ( catMaybes )
+import Data.Maybe ( catMaybes, fromJust )
 import Su.Puzzle
 import Su.Tree
+import System.FilePath
 import Text.ParserCombinators.Parsec
 import Text.ParserCombinators.Parsec.Char
 import Text.ParserCombinators.Parsec.Prim
 import Util.Monad
 
 type Entry = Maybe Move
+type Parsed = Either ParseError
+type PuzzleParser = Parser [Puzzle]
 
-type PuzzleParser = Parser Puzzle
+nextLoc :: Loc -> Maybe Loc
+nextLoc (Loc r c) | r == size * size && c == size * size = Nothing
+nextLoc (Loc r c) | c == size * size                     = Just $ Loc (r + 1) 1
+nextLoc (Loc r c) | otherwise                            = Just $ Loc r (c + 1)
 
-e = '_'
+nextLoc' :: Loc -> Loc
+nextLoc' (Loc r c) | c == size * size = Loc (r + 1) 1
+nextLoc' (Loc r c) | otherwise = Loc r (c + 1)
 
-nextLoc :: Loc -> Loc
-nextLoc (Loc r c) = if c == size * size 
-                    then Loc (r + 1) 1
-                    else Loc r (c + 1)
-
-entry :: Loc -> Parser Entry
-entry loc = do 
-  v <- value 
+entry :: Char -> Loc -> Parser Entry
+entry e loc = do 
+  v <- value e
   return $ fmap (Move loc) v 
     
-empty :: Parser (Maybe Int)
-empty = do 
-  c <- char e 
+empty :: Char -> Parser (Maybe Int)
+empty e = do 
+  c <- char e
   return Nothing 
 
-value :: Parser (Maybe Int)
-value = empty  
+value :: Char -> Parser (Maybe Int)
+value e = empty e
         <|> solutionValue 
         <?> "empty square indicated by '" ++ e:[] ++ "' or number from 1-9"
                       
@@ -43,24 +47,37 @@ solutionValue = do
   d <- solutionDigit
   return $ Just $ digitToInt d
   
-puzzleParser :: PuzzleParser
-puzzleParser = do 
-  allEntries <- unfoldrM row 1
-  return $ Puzzle $ catMaybes $ concat allEntries
+csuParser :: PuzzleParser  
+csuParser = sepBy1 ((pure entriesToPuzzle) <*> unfoldrM (csuEntry '.') (Just $ Loc 1 1)) newline
+
+csuEntry :: Char -> Maybe Loc -> Parser (Maybe (Entry, Maybe Loc))
+csuEntry e Nothing = return Nothing
+csuEntry e (Just loc) = do
+  val <- entry e loc
+  return $ Just (val, nextLoc loc)
+  
+suParser :: PuzzleParser
+suParser = do 
+  optional spaces
+  allEntries <- unfoldrM (row '_') 1
+  return [entriesToPuzzle $ concat allEntries]
+  
+entriesToPuzzle :: [Entry] -> Puzzle
+entriesToPuzzle entries = Puzzle $ catMaybes entries
    
-row :: Int -> Parser (Maybe ([Entry], Int))
-row rowNum | rowNum > size * size = return Nothing
-row rowNum | otherwise = do
-  newline
-  rowEntries <- unfoldrM (rowEntry rowNum) (Loc rowNum 1)
+row :: Char -> Int -> Parser (Maybe ([Entry], Int))
+row e rowNum | rowNum > size * size = return Nothing
+row e rowNum | otherwise = do
+  rowEntries <- unfoldrM (rowEntry e rowNum) (Loc rowNum 1)
+  manyTill space newline
   return $ Just (rowEntries, rowNum + 1)
 
-rowEntry :: Int -> Loc -> Parser (Maybe (Entry, Loc))
-rowEntry thisRow loc | locRow loc /= thisRow = return Nothing
-rowEntry thisRow loc | otherwise = do
-  spaces
-  val <- entry loc  
-  return $ Just (val, nextLoc loc)
+rowEntry :: Char -> Int -> Loc -> Parser (Maybe (Entry, Loc))
+rowEntry e thisRow loc | locRow loc /= thisRow = return Nothing
+rowEntry e thisRow loc | otherwise = do
+  skipMany space
+  val <- entry e loc  
+  return $ Just (val, nextLoc' loc)
 
 str1 = "\n\
 \5 3 _ _ 7 _ _ _ _\n\
@@ -72,5 +89,8 @@ str1 = "\n\
 \_ 6 _ _ _ _ 2 8 _\n\
 \_ _ _ 4 1 9 _ _ 5\n\
 \_ _ _ _ 8 _ _ 7 9\n"      
-               
-               
+
+parseSudoku :: FilePath -> IO (Parsed [Puzzle])
+parseSudoku path = case takeExtension path of
+  ".su" -> parseFromFile suParser path 
+  ".csu" -> parseFromFile csuParser path

@@ -41,18 +41,47 @@ type Moves = [Move]
 instance Display Move where
   display (Move l v) = display l ++ ":" ++ show v
 
-data Type = Br | Soln
+-- | Tag associated with each move in a path, indicating that the move was a branch or a solution or a given
+data MoveTag 
+  = B -- ^ Branch
+  | S -- ^ Solution    
+  | G -- ^ Given
+  deriving Show
+           
+data TMove = TMove Move MoveTag deriving Show      
 
-data Path = Path Move Path | Nil deriving Show
+instance Display TMove where
+  display (TMove m mt) = display m ++ ", " ++ show mt
 
-pathToList :: Path -> Moves
+tagMove :: MoveTag -> Move -> TMove
+tagMove mt m = TMove m mt
+taggedMoveMove (TMove m _) = m
+taggedMoveMoveTag (TMove _ mt) = mt
+           
+type TaggedPath = Path TMove
+type MovePath = Path Move
+data Path a = Path a (Path a) | Nil
+
+instance (Show a) => Show (Path a) where
+  show path = show $ pathToList path
+instance Functor Path where
+  fmap f Nil = Nil
+  fmap f (Path x p) = Path (f x) (fmap f p)
+instance (Display a) => Display (Path a) where
+  display path = unlines $ map display $ pathToList path
+
+
+untagPath :: TaggedPath -> MovePath
+untagPath = fmap taggedMoveMove
+  
+
+pathToList :: Path x -> [x]
 pathToList Nil = []
 pathToList (Path m p) = m : pathToList p
 
-listToPath :: Moves -> Path -> Path
+listToPath :: [x] -> Path x -> Path x
 listToPath (m:[]) = Path m 
 listToPath (m:ms) = (Path m) . (listToPath ms)
-
 
 data Tree = Solutions Moves Tree
                 | Completed 
@@ -125,28 +154,27 @@ displayMove :: Maybe Int -> String
 displayMove Nothing = U.c2s U.box
 displayMove (Just v) = show v
 
-displayPath :: Path -> String
-displayPath path = let moveList = map (\(Move l v) -> (l, v)) (pathToList path) 
-                       locs = buildLocs size
-                       displayRow = (\row -> " " ++ (concat $ markEveryNthCol size $ map (\loc -> displayMove $ lookup loc moveList) row) ++ " ")
-                       rowStrList = map displayRow (groupByRows locs)
-                   in "\n" ++ (concat $ intersperse "\n" (markEveryNthRow size rowStrList)) ++ "\n"               
+displayMovePath :: MovePath -> String
+displayMovePath path = let moveList = map (\(Move l v) -> (l, v)) (pathToList path) 
+                           locs = buildLocs size
+                           displayRow = (\row -> " " ++ (concat $ markEveryNthCol size $ map (\loc -> displayMove $ lookup loc moveList) row) ++ " ")
+                           rowStrList = map displayRow (groupByRows locs)
+                       in "\n" ++ (concat $ intersperse "\n" (markEveryNthRow size rowStrList)) ++ "\n"               
                       
-dispPath :: Path -> IO ()                      
-dispPath = putStrLn . displayPath 
+dispMovePath :: MovePath -> IO ()                      
+dispMovePath = putStrLn . displayMovePath 
 
-
-allSuccessfulPaths :: Tree -> [Path]
+allSuccessfulPaths :: Tree -> [TaggedPath]
 allSuccessfulPaths Completed = [Nil]
 allSuccessfulPaths DeadEnd = [] 
 allSuccessfulPaths (Solutions moves tree) = do 
   y <- allSuccessfulPaths tree
-  return $ (listToPath moves) y
+  return $ listToPath (map (S `tagMove`) moves) y
 allSuccessfulPaths (Node l branches) = do
   (x, branch) <- branches 
   guard $ notDeadEnd branch
   y <- allSuccessfulPaths branch
-  return $ Path (Move l x) y
+  return $ Path (B `tagMove` (Move l x)) y
 
 markEveryNthCol :: Int -> [String] -> [String]                 
 markEveryNthCol n row = intersperse " " (intercalate ["|"] (chunk n row))
@@ -157,6 +185,6 @@ markEveryNthRow n rows = concat $ intersperse [(replicate (length $ head rows) '
 groupByRows :: [Loc] -> [[Loc]]
 groupByRows ls = groupBy (\(Loc r c) (Loc r' c') -> r == r') ls
 
-allSolutions :: [Path]
+allSolutions :: [TaggedPath]
 allSolutions = allSuccessfulPaths gameTree
                           
