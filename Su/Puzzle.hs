@@ -11,7 +11,7 @@ data Puzzle = Puzzle Givens deriving Show
 
 puzzleGivens (Puzzle g) = g
 
-type Solution = Path
+type Solution = TaggedPath
 
 data ImproperPuzzleType = MultipleSolutions | NoSolutions deriving Show
 
@@ -29,11 +29,11 @@ classifyPuzzle p = case puzzleSolutions p of
   (soln:[]) -> ProperPuzzle soln
   _ -> ImproperPuzzle MultipleSolutions
 
-puzzleSolutions :: Puzzle -> [Path]
+puzzleSolutions :: Puzzle -> [TaggedPath]
 puzzleSolutions (Puzzle givens) = do 
   let tree = buildTreeForPuzzle givens (buildGrid \\ map moveLoc givens)
   path <- allSuccessfulPaths tree
-  return $ listToPath givens path
+  return $ listToPath (fmap (G `tagMove`) givens) path
 
 puzzle1 :: Puzzle
 puzzle1 = Puzzle [Move (Loc 1 1) 5,

@@ -1,7 +1,7 @@
 module Main where
 
 import Control.Applicative ( (<*>) )
-import Control.Monad ( join )
+import Control.Monad ( mapM_, join )
 import Control.Monad.State
 import Data.List ( find )
 import Data.Maybe ( fromJust, isJust, maybe )
@@ -43,16 +43,20 @@ config = do
     Just (Seed i) -> return i
   return (verbose, seed)
   
-
 main = do 
   (file:otherArgs) <- getArgs 
-  parsedPuzzle <- parseFromFile puzzleParser file
-  case parsedPuzzle of
+  parsedPuzzles <- parseSudoku file
+  case parsedPuzzles of
     Left err -> print err
-    Right puzzle -> case classifyPuzzle puzzle of
-      (ProperPuzzle soln) -> do 
-        putStrLn "Starting puzzle: "
-        dispPath $ listToPath (puzzleGivens puzzle) Nil
-        putStrLn "Solved puzzle: "
-        dispPath soln
-      (ImproperPuzzle improperPuzzleType) -> disp improperPuzzleType
+    Right puzzles -> mapM_ solveAndDisplayPuzzle puzzles
+        
+solveAndDisplayPuzzle :: Puzzle -> IO ()        
+solveAndDisplayPuzzle puzzle = do 
+  putStrLn "Input puzzle: "
+  dispMovePath $ listToPath (puzzleGivens puzzle) Nil 
+  case classifyPuzzle puzzle of
+    (ProperPuzzle soln) -> do 
+      putStrLn "Solved puzzle: "
+      dispMovePath $ untagPath soln
+    (ImproperPuzzle improperPuzzleType) -> disp improperPuzzleType
+      
