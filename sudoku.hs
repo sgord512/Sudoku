@@ -5,6 +5,8 @@ import Control.Monad ( mapM_, join )
 import Control.Monad.State
 import Data.List ( find )
 import Data.Maybe ( fromJust, isJust, maybe )
+import Su.Base
+import Su.Display
 import Su.Puzzle
 import Su.Tree
 import Su.Serialize
@@ -44,11 +46,14 @@ config = do
   return (verbose, seed)
   
 main = do 
-  (file:otherArgs) <- getArgs 
-  parsedPuzzles <- parseSudoku file
-  case parsedPuzzles of
-    Left err -> print err
-    Right puzzles -> mapM_ solveAndDisplayPuzzle puzzles
+  files <- getArgs
+  if null files 
+    then putStrLn "No input files provided. Bye bye." 
+    else do parsedPuzzleFiles <- mapM parseSudoku files
+            let handleParsedPuzzleFile ppf = case ppf of
+                  Left err -> print err
+                  Right puzzles -> mapM_ solveAndDisplayPuzzle puzzles
+            mapM_ handleParsedPuzzleFile parsedPuzzleFiles
         
 solveAndDisplayPuzzle :: Puzzle -> IO ()        
 solveAndDisplayPuzzle puzzle = do 

@@ -1,6 +1,8 @@
 module Su.Puzzle where
 
 import Data.List ( (\\) )
+import Su.Base
+import Su.Display
 import Su.Tree
 import Util.Display
 
@@ -29,10 +31,12 @@ classifyPuzzle p = case puzzleSolutions p of
   (soln:[]) -> ProperPuzzle soln
   _ -> ImproperPuzzle MultipleSolutions
 
+buildTreeForPuzzle :: Puzzle -> Tree
+buildTreeForPuzzle (Puzzle givens) = buildTree' givens  (possibilityOrder givens $ buildLocs size \\ map moveLoc givens)
+
 puzzleSolutions :: Puzzle -> [TaggedPath]
-puzzleSolutions (Puzzle givens) = do 
-  let tree = buildTreeForPuzzle givens (buildGrid \\ map moveLoc givens)
-  path <- allSuccessfulPaths tree
+puzzleSolutions puzzle@(Puzzle givens) = do 
+  path <- allSuccessfulPaths $ buildTreeForPuzzle puzzle
   return $ listToPath (fmap (G `tagMove`) givens) path
 
 puzzle1 :: Puzzle
@@ -67,3 +71,25 @@ puzzle1 = Puzzle [Move (Loc 1 1) 5,
                   Move (Loc 9 8) 7,
                   Move (Loc 9 9) 9]
           
+puzzle2 :: Puzzle
+puzzle2 = Puzzle [Move (Loc 1 1) 4,
+                  Move (Loc 1 5) 3,
+                  Move (Loc 2 4) 6,
+                  Move (Loc 2 7) 8,
+                  Move (Loc 3 9) 1, 
+                  Move (Loc 4 5) 5,
+                  Move (Loc 4 8) 9,
+                  Move (Loc 5 2) 8,
+                  Move (Loc 5 7) 6,
+                  Move (Loc 6 2) 7,
+                  Move (Loc 6 4) 2,
+                  Move (Loc 7 4) 1,
+                  Move (Loc 7 6) 2,                  
+                  Move (Loc 7 7) 7,
+                  Move (Loc 8 1) 5,
+                  Move (Loc 8 3) 3,
+                  Move (Loc 8 8) 4,
+                  Move (Loc 9 1) 9]
+
+instance Display Puzzle where
+  display (Puzzle givens) = displayMovePath (listToPath givens Nil)

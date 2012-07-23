@@ -3,6 +3,7 @@ module Su.Serialize where
 import Control.Applicative ( pure, (<*>) )
 import Data.Char ( digitToInt )
 import Data.Maybe ( catMaybes, fromJust )
+import Su.Base
 import Su.Puzzle
 import Su.Tree
 import System.FilePath
@@ -14,6 +15,10 @@ import Util.Monad
 type Entry = Maybe Move
 type Parsed = Either ParseError
 type PuzzleParser = Parser [Puzzle]
+
+formats = [(".su", suParser)
+          ,(".csu", csuParser)
+          ]
 
 nextLoc :: Loc -> Maybe Loc
 nextLoc (Loc r c) | r == size * size && c == size * size = Nothing
@@ -29,12 +34,12 @@ entry e loc = do
   v <- value e
   return $ fmap (Move loc) v 
     
-empty :: Char -> Parser (Maybe Int)
+empty :: Char -> Parser (Maybe Integer)
 empty e = do 
   c <- char e
   return Nothing 
 
-value :: Char -> Parser (Maybe Int)
+value :: Char -> Parser (Maybe Integer)
 value e = empty e
         <|> solutionValue 
         <?> "empty square indicated by '" ++ e:[] ++ "' or number from 1-9"
@@ -42,10 +47,10 @@ value e = empty e
 solutionDigit :: Parser Char
 solutionDigit = oneOf $ concat $ map show [1..9]
 
-solutionValue :: Parser (Maybe Int)
+solutionValue :: Parser (Maybe Integer)
 solutionValue = do 
   d <- solutionDigit
-  return $ Just $ digitToInt d
+  return $ Just $ toInteger $ digitToInt d
   
 csuParser :: PuzzleParser  
 csuParser = sepBy1 ((pure entriesToPuzzle) <*> unfoldrM (csuEntry '.') (Just $ Loc 1 1)) newline
@@ -65,14 +70,14 @@ suParser = do
 entriesToPuzzle :: [Entry] -> Puzzle
 entriesToPuzzle entries = Puzzle $ catMaybes entries
    
-row :: Char -> Int -> Parser (Maybe ([Entry], Int))
+row :: Char -> Integer -> Parser (Maybe ([Entry], Integer))
 row e rowNum | rowNum > size * size = return Nothing
 row e rowNum | otherwise = do
   rowEntries <- unfoldrM (rowEntry e rowNum) (Loc rowNum 1)
   manyTill space newline
   return $ Just (rowEntries, rowNum + 1)
 
-rowEntry :: Char -> Int -> Loc -> Parser (Maybe (Entry, Loc))
+rowEntry :: Char -> Integer -> Loc -> Parser (Maybe (Entry, Loc))
 rowEntry e thisRow loc | locRow loc /= thisRow = return Nothing
 rowEntry e thisRow loc | otherwise = do
   skipMany space
@@ -91,6 +96,6 @@ str1 = "\n\
 \_ _ _ _ 8 _ _ 7 9\n"      
 
 parseSudoku :: FilePath -> IO (Parsed [Puzzle])
-parseSudoku path = case takeExtension path of
-  ".su" -> parseFromFile suParser path 
-  ".csu" -> parseFromFile csuParser path
+parseSudoku file = case lookup (takeExtension file) formats of
+  Nothing -> error "Unknown file format"
+  Just parser -> parseFromFile parser file

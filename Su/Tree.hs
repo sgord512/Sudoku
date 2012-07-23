@@ -2,98 +2,33 @@ module Su.Tree where
 
 import Control.Monad
 import Data.List
+import Data.Maybe ( fromJust )
+import Data.Map ( Map )
+import qualified Data.Map as Map
 import System.Random
 import Util.Display
 import Util.List
 import Util.String
+import Util.Tuple
 import qualified Util.Unicode as U
+import Su.Display
+import Su.Base
 
-size = 3
-
-type Branch = (Int, Tree)
+type Branch = (Integer, Tree)
 type Branches = [Branch]
-      
-data Loc = Loc Row Col deriving (Eq, Show)
 
-locRow (Loc r _) = r
-locCol (Loc _ c) = c
-
-instance Display Loc where
-  display (Loc r c) = angleBrackets $ show r ++ "," ++ show c
-
-instance Ord Loc where 
-  (Loc r c) `compare` (Loc r' c') = 
-    case r `compare` r' of
-      EQ -> c `compare` c'
-      neq -> neq
-
-type Locs = [Loc]
-
-type Row = Int
-type Col = Int
-
-data Move = Move Loc Int deriving Show
-
-moveLoc (Move l _) = l
-moveVal (Move _ v) = v
-type Moves = [Move]
-
-instance Display Move where
-  display (Move l v) = display l ++ ":" ++ show v
-
--- | Tag associated with each move in a path, indicating that the move was a branch or a solution or a given
-data MoveTag 
-  = B -- ^ Branch
-  | S -- ^ Solution    
-  | G -- ^ Given
+data Tree 
+  = Solution Move Tree
+  | Completed 
+  | DeadEnd 
+  | Node Loc Branches 
   deriving Show
-           
-data TMove = TMove Move MoveTag deriving Show      
 
-instance Display TMove where
-  display (TMove m mt) = display m ++ ", " ++ show mt
+deadEnd :: Tree -> Bool
+deadEnd DeadEnd = True
+deadEnd _ = False
 
-tagMove :: MoveTag -> Move -> TMove
-tagMove mt m = TMove m mt
-taggedMoveMove (TMove m _) = m
-taggedMoveMoveTag (TMove _ mt) = mt
-           
-type TaggedPath = Path TMove
-type MovePath = Path Move
-data Path a = Path a (Path a) | Nil
-
-instance (Show a) => Show (Path a) where
-  show path = show $ pathToList path
-instance Functor Path where
-  fmap f Nil = Nil
-  fmap f (Path x p) = Path (f x) (fmap f p)
-instance (Display a) => Display (Path a) where
-  display path = unlines $ map display $ pathToList path
-
-
-untagPath :: TaggedPath -> MovePath
-untagPath = fmap taggedMoveMove
-  
-
-pathToList :: Path x -> [x]
-pathToList Nil = []
-pathToList (Path m p) = m : pathToList p
-
-listToPath :: [x] -> Path x -> Path x
-listToPath (m:[]) = Path m 
-listToPath (m:ms) = (Path m) . (listToPath ms)
-
-data Tree = Solutions Moves Tree
-                | Completed 
-                | DeadEnd 
-                | Node Loc Branches 
-                deriving Show
-
-notDeadEnd :: Tree -> Bool
-notDeadEnd DeadEnd = False
-notDeadEnd _ = True
-
-path :: Tree -> Int -> Maybe Tree
+path :: Tree -> Integer -> Maybe Tree
 path (Node _ br) n = lookup n br
 path _ _ = Nothing 
 
@@ -106,30 +41,40 @@ sameCol (Loc _ c) (Loc _ c') = c == c'
 sameBox :: Loc -> Loc -> Bool
 sameBox l l' = box l == box l'
 
-box :: Loc -> Int
-box (Loc r c) = ((r - 1) `div` size) * size + ((c - 1) `div` size + 1)
+boxes :: Map Loc Integer
+boxes = Map.fromList [((Loc r c), box' (Loc r c)) | r <- [1..size * size], c <- [1..size * size] ]
 
-possibilities :: Moves -> Loc -> [Int]
+box :: Loc -> Integer
+box loc = fromJust $ Map.lookup loc boxes
+
+box' :: Loc -> Integer
+box' (Loc r c) = ((r - 1) `div` size) * size + ((c - 1) `div` size + 1)
+
+complement :: [Integer] -> [Integer]
+complement = ([1..size * size] \\)
+
+possibilities :: Moves -> Loc -> [Integer]
 possibilities moves l = [1..size * size] \\ map moveVal (filter (\(Move l' v) -> sameRow l l' || sameCol l l' || sameBox l l') moves)
 
 pairMap :: (a -> b) -> [a] -> [(a, b)]
 pairMap f xs = map (\x -> (x, f x)) xs
 
 buildTree' :: Moves -> Locs -> Tree
-buildTree' _ [] = Completed
+buildTree' _ [] = Completed -- error "Completed it yay!" -- Completed
 buildTree' moves locs@(l:ls) = 
-  let (solvableLocs, unsolvableLocs) = partition (solvable moves) locs
-  in if not $ null solvableLocs 
-     then let solutions = map (solution moves) solvableLocs
-          in Solutions solutions (buildTree' (moves ++ solutions) unsolvableLocs)
-     else case possibilities moves l of                                  
-       [] -> DeadEnd
-       poss -> Node l (buildBranches' moves l ls poss)
-               
-buildBranches' :: Moves -> Loc -> Locs -> [Int] -> Branches
-buildBranches' moves l ls poss = let deadEndBranches = pairMap (const DeadEnd) ([1..size] \\ poss)
-                                     livingBranches = pairMap (\n -> buildTree' ((Move l n):moves) ls) poss
-                                 in (deadEndBranches ++ livingBranches)
+  case possibilities moves l of 
+    [] -> DeadEnd
+    poss -> Node l (buildBranches' moves l ls poss)
+
+buildBranches' :: Moves -> Loc -> Locs -> [Integer] -> Branches
+buildBranches' moves l locs poss = pairMap (buildBranch moves l locs) poss
+
+buildBranch :: Moves -> Loc -> Locs -> Integer -> Tree
+buildBranch moves l locs n = buildTree' moves' (possibilityOrder moves' locs)
+  where moves' = (Move l n):moves
+
+possibilityOrder :: Moves -> Locs -> Locs
+possibilityOrder moves locs = sortBy (\l l' -> possibilities moves l `compare` possibilities moves l') locs
     
 solvable :: Moves -> Loc -> Bool    
 solvable moves l = (length $ possibilities moves l) == 1
@@ -140,51 +85,39 @@ solution moves l = Move l (head $ possibilities moves l)
 buildTree :: Locs -> Tree
 buildTree locs = buildTree' [] locs
 
-buildTreeForPuzzle :: Moves -> Locs -> Tree
-buildTreeForPuzzle moves locs = buildTree' moves locs
-
-gameTree = buildTree buildGrid
-
-buildLocs :: Int -> Locs
-buildLocs n = [Loc r c | r <- [1..n * n], c <- [1..n * n] ]
-
-buildGrid = buildLocs size
-
-displayMove :: Maybe Int -> String
-displayMove Nothing = U.c2s U.box
-displayMove (Just v) = show v
-
-displayMovePath :: MovePath -> String
-displayMovePath path = let moveList = map (\(Move l v) -> (l, v)) (pathToList path) 
-                           locs = buildLocs size
-                           displayRow = (\row -> " " ++ (concat $ markEveryNthCol size $ map (\loc -> displayMove $ lookup loc moveList) row) ++ " ")
-                           rowStrList = map displayRow (groupByRows locs)
-                       in "\n" ++ (concat $ intersperse "\n" (markEveryNthRow size rowStrList)) ++ "\n"               
-                      
-dispMovePath :: MovePath -> IO ()                      
-dispMovePath = putStrLn . displayMovePath 
-
 allSuccessfulPaths :: Tree -> [TaggedPath]
 allSuccessfulPaths Completed = [Nil]
-allSuccessfulPaths DeadEnd = [] 
-allSuccessfulPaths (Solutions moves tree) = do 
+allSuccessfulPaths (Solution move tree) = do 
   y <- allSuccessfulPaths tree
-  return $ listToPath (map (S `tagMove`) moves) y
+  return $ Path (S `tagMove` move) y
 allSuccessfulPaths (Node l branches) = do
   (x, branch) <- branches 
-  guard $ notDeadEnd branch
+  guard $ not $ deadEnd branch
   y <- allSuccessfulPaths branch
   return $ Path (B `tagMove` (Move l x)) y
 
-markEveryNthCol :: Int -> [String] -> [String]                 
-markEveryNthCol n row = intersperse " " (intercalate ["|"] (chunk n row))
+followBranch :: Integer -> Tree -> Tree
+followBranch n (Node l branches) = fromJust $ lookup n branches
+followBranch n t = t
 
-markEveryNthRow :: Int -> [String] -> [String]
-markEveryNthRow n rows = concat $ intersperse [(replicate (length $ head rows) '-')] (chunk n rows)            
+followBranches :: [Integer] -> Tree -> Tree
+followBranches [] t = t
+followBranches (n:ns) t = followBranches ns $ followBranch n t
 
-groupByRows :: [Loc] -> [[Loc]]
-groupByRows ls = groupBy (\(Loc r c) (Loc r' c') -> r == r') ls
+conflictingMoves :: Moves -> Bool
+conflictingMoves moves = any (\m -> conflictInRow moves m || conflictInBox moves m || conflictInRow moves m) moves
+  
+conflictInRow :: Moves -> Move -> Bool 
+conflictInRow moves m@(Move l v) = v `elem` (map moveVal $ filter (sameRow l . moveLoc) (delete m moves))
 
-allSolutions :: [TaggedPath]
-allSolutions = allSuccessfulPaths gameTree
-                          
+conflictInCol :: Moves -> Move -> Bool
+conflictInCol moves m@(Move l v) = v `elem` (map moveVal $ filter (sameCol l . moveLoc) (delete m moves))
+
+conflictInBox :: Moves -> Move -> Bool 
+conflictInBox moves m@(Move l v) = v `elem` (map moveVal $ filter (sameBox l . moveLoc) (delete m moves))
+
+wouldConflict :: Moves -> Move -> Bool
+wouldConflict moves m = alreadySolvedLoc moves (moveLoc m) || (not $ moveVal m `elem` possibilities moves (moveLoc m))
+
+alreadySolvedLoc :: Moves -> Loc -> Bool
+alreadySolvedLoc moves loc = loc `elem` map moveLoc moves
