@@ -3,31 +3,52 @@ module Su.Base where
 import Util.Display
 import Util.String
 
-size = 3 :: Integer
+size = 3 :: Int
       
-data Loc = Loc Row Col deriving (Eq, Show)
+data Loc = Loc Row Col Box deriving (Eq, Show)
 
-locRow (Loc r _) = r
-locCol (Loc _ c) = c
+locRow (Loc r _ _) = r
+locCol (Loc _ c _) = c
+locBox (Loc _ _ b) = b
+
+type Branch = (Int, Tree)
+type Branches = [Branch]
+
+data Tree 
+  = Completed 
+  | DeadEnd 
+  | Node Loc Branches 
+  deriving Show
+
+deadEnd :: Tree -> Bool
+deadEnd DeadEnd = True
+deadEnd _ = False
 
 instance Display Loc where
-  display (Loc r c) = angleBrackets $ show r ++ "," ++ show c
+  display (Loc r c b) = angleBrackets $ show r ++ "," ++ show c
 
 instance Ord Loc where 
-  (Loc r c) `compare` (Loc r' c') = 
+  (Loc r c b) `compare` (Loc r' c' b') = 
     case r `compare` r' of
       EQ -> c `compare` c'
       neq -> neq
 
 type Locs = [Loc]
 
-buildLocs :: Integer -> Locs
-buildLocs n = [Loc r c | r <- [1..n * n], c <- [1..n * n] ]
+boardLocs :: Int -> Locs
+boardLocs n = [loc r c | r <- [1..n * n], c <- [1..n * n] ]
 
-type Row = Integer
-type Col = Integer
+box :: Int -> Int -> Int
+box r c = ((r - 1) `div` size) * size + ((c - 1) `div` size + 1)
 
-data Move = Move Loc Integer deriving (Eq, Show)
+loc :: Int -> Int -> Loc
+loc r c = Loc r c (box r c)
+
+type Row = Int
+type Col = Int
+type Box = Int
+
+data Move = Move Loc Int deriving (Eq, Show)
 
 moveLoc (Move l _) = l
 moveVal (Move _ v) = v

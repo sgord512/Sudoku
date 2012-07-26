@@ -5,7 +5,7 @@ import Data.Char ( digitToInt )
 import Data.Maybe ( catMaybes, fromJust )
 import Su.Base
 import Su.Puzzle
-import Su.Tree
+import Su.Solver
 import System.FilePath
 import Text.ParserCombinators.Parsec
 import Text.ParserCombinators.Parsec.Char
@@ -21,39 +21,39 @@ formats = [(".su", suParser)
           ]
 
 nextLoc :: Loc -> Maybe Loc
-nextLoc (Loc r c) | r == size * size && c == size * size = Nothing
-nextLoc (Loc r c) | c == size * size                     = Just $ Loc (r + 1) 1
-nextLoc (Loc r c) | otherwise                            = Just $ Loc r (c + 1)
+nextLoc (Loc r c _) | r == size * size && c == size * size = Nothing
+nextLoc (Loc r c _) | c == size * size                     = Just $ loc (r + 1) 1
+nextLoc (Loc r c _) | otherwise                            = Just $ loc r (c + 1)
 
 nextLoc' :: Loc -> Loc
-nextLoc' (Loc r c) | c == size * size = Loc (r + 1) 1
-nextLoc' (Loc r c) | otherwise = Loc r (c + 1)
+nextLoc' (Loc r c _) | c == size * size = loc (r + 1) 1
+nextLoc' (Loc r c _) | otherwise = loc r (c + 1)
 
 entry :: Char -> Loc -> Parser Entry
 entry e loc = do 
   v <- value e
   return $ fmap (Move loc) v 
     
-empty :: Char -> Parser (Maybe Integer)
-empty e = do 
+empty' :: Char -> Parser (Maybe Int)
+empty' e = do 
   c <- char e
   return Nothing 
 
-value :: Char -> Parser (Maybe Integer)
-value e = empty e
+value :: Char -> Parser (Maybe Int)
+value e = empty' e
         <|> solutionValue 
         <?> "empty square indicated by '" ++ e:[] ++ "' or number from 1-9"
                       
 solutionDigit :: Parser Char
 solutionDigit = oneOf $ concat $ map show [1..9]
 
-solutionValue :: Parser (Maybe Integer)
+solutionValue :: Parser (Maybe Int)
 solutionValue = do 
   d <- solutionDigit
-  return $ Just $ toInteger $ digitToInt d
+  return $ Just $ digitToInt d
   
 csuParser :: PuzzleParser  
-csuParser = sepBy1 ((pure entriesToPuzzle) <*> unfoldrM (csuEntry '.') (Just $ Loc 1 1)) newline
+csuParser = sepBy1 ((pure entriesToPuzzle) <*> unfoldrM (csuEntry '.') (Just $ loc 1 1)) newline
 
 csuEntry :: Char -> Maybe Loc -> Parser (Maybe (Entry, Maybe Loc))
 csuEntry e Nothing = return Nothing
@@ -70,14 +70,14 @@ suParser = do
 entriesToPuzzle :: [Entry] -> Puzzle
 entriesToPuzzle entries = Puzzle $ catMaybes entries
    
-row :: Char -> Integer -> Parser (Maybe ([Entry], Integer))
+row :: Char -> Int -> Parser (Maybe ([Entry], Int))
 row e rowNum | rowNum > size * size = return Nothing
 row e rowNum | otherwise = do
-  rowEntries <- unfoldrM (rowEntry e rowNum) (Loc rowNum 1)
+  rowEntries <- unfoldrM (rowEntry e rowNum) (loc rowNum 1)
   manyTill space newline
   return $ Just (rowEntries, rowNum + 1)
 
-rowEntry :: Char -> Integer -> Loc -> Parser (Maybe (Entry, Loc))
+rowEntry :: Char -> Int -> Loc -> Parser (Maybe (Entry, Loc))
 rowEntry e thisRow loc | locRow loc /= thisRow = return Nothing
 rowEntry e thisRow loc | otherwise = do
   skipMany space

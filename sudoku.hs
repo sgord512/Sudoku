@@ -62,6 +62,6 @@ solveAndDisplayPuzzle puzzle = do
   case classifyPuzzle puzzle of
     (ProperPuzzle soln) -> do 
       putStrLn "Solved puzzle: "
-      dispMovePath $ untagPath soln
+      dispMovePath soln
     (ImproperPuzzle improperPuzzleType) -> disp improperPuzzleType
       
