@@ -10,6 +10,7 @@ import qualified Data.Map as Map
 import System.Random
 import Util.Display
 import Util.List
+import Util.Prelude
 import Util.String
 import Util.Tuple
 import qualified Util.Unicode as U
@@ -47,7 +48,7 @@ tree :: Locs -> Tree
 tree locs = tree' [] locs
 
 tree' :: Moves -> Locs -> Tree
-tree' _ [] = Completed -- error "Completed it yay!" -- Completed
+tree' _ [] = Completed
 tree' moves locs@(l:ls) = 
   case possibilities moves l of 
     [] -> DeadEnd
@@ -57,7 +58,7 @@ branches :: Moves -> Loc -> Locs -> [Int] -> Branches
 branches moves l locs poss = poss `zipWithMap` (treeFromChoice moves l locs)
 
 treeFromChoice :: Moves -> Loc -> Locs -> Int -> Tree
-treeFromChoice moves l locs n = tree' moves' (possibilityOrder moves' locs)
+treeFromChoice moves l locs n = tree' moves' (minPossibilityFirst moves' locs)
   where moves' = (Move l n):moves
 
 -- Puzzle solving part         
@@ -99,6 +100,11 @@ traverseUntilJust (x@(Just _) : xs) = x
 possibilityOrder :: Moves -> Locs -> Locs
 possibilityOrder moves locs = sortBy (\l l' -> numberOfPossibilities l `compare` numberOfPossibilities l') locs
   where numberOfPossibilities = length . possibilities moves 
+
+minPossibilityFirst :: Moves -> Locs -> Locs
+minPossibilityFirst moves locs = case removeMinBy (toComparison $ length . possibilities moves) locs of
+  Nothing -> locs
+  Just (min, rest) -> min : rest
     
 solvable :: Moves -> Loc -> Bool    
 solvable moves l = (length $ possibilities moves l) == 1
